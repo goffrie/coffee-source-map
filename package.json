@@ -1,0 +1,26 @@
+{
+  "name":              "coffee-source-map",
+  "description":       "Implementation of v3 sourcemaps in coffee-script.",
+  "keywords":          ["sourcemaps", "v3", "coffee-script"],
+  "version":           "1.0.0",
+  "author":            "Jason Walton (https://github.com/jwalton)",
+  "contributors": [
+      "Jason Walton <dev@lucid.thedreaming.org> (https://github.com/jwalton)",
+      "Jeremy Askenas <jashkenas@gmail.com> (https://github.com/jashkenas)"
+  ],
+  "licenses": [{
+    "type":            "MIT",
+    "url":             "http://opensource.org/licenses/MIT"
+  }],
+  "main":              "./lib/sourcemap",
+  "directories" : {
+    "lib":             "./lib"
+  },
+  "devDependencies": {
+    "coffee-script": "1.6.3",
+    "mocha":         "1.10.0"
+  },
+  "engines": {
+    "node":            ">=0.6.19"
+  }
+}
