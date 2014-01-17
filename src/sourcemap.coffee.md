@@ -207,42 +207,40 @@ Most fields in v3 sourcemaps are relative to the previous occurence, so set them
 Stack Trace Support
 -------------------
 
-# Based on http://v8.googlecode.com/svn/branches/bleeding_edge/src/messages.js
-# Modified to handle sourceMap.
-
-        formatSourcePosition = (frame, getSourceMapping) ->
-            fileName = undefined
-            fileLocation = ''
-
-            if frame.isNative()
-                fileLocation = "native"
-            else
-                if frame.isEval()
-                    fileName = frame.getScriptNameOrSourceURL()
-                    fileLocation = "#{frame.getEvalOrigin()}, " unless fileName
-                else
-                    fileName = frame.getFileName()
-
-                fileName or= "<anonymous>"
-
-                line = frame.getLineNumber()
-                column = frame.getColumnNumber()
-
-                # Check for a sourceMap position
-                source = getSourceMapping fileName, line, column
-                fileLocation =
-                    if source
-                        [sourceFile, sourceLine, sourceColumn] = source
-                        "#{sourceFile}:#{sourceLine+1}:#{sourceColumn+1}"
-                    else
-                        "#{fileName}:#{line}:#{column}"
-
 Based on [michaelficarra/CoffeeScriptRedux](http://goo.gl/ZTx1p)
 NodeJS / V8 has no support for transforming positions in stack traces using
 sourceMap, so we must monkey-patch Error to display source positions.
 
-        @registerErrorHandler: ->
+`useExisting` signals that we should try to patch an existing
+Erorr.prepareStackTrace method. This may not play well with all handlers
+though, such as CoffeeScript's, which causes line numbers to be
+double-processed.
+
+        @registerErrorHandler: (useExisting = false) ->
             sourceMapCache = {}
+
+Use an existing prepareStackTrace, if desired.
+
+            prepareStackTrace = if useExisting && Error.prepareStackTrace?
+                Error.prepareStackTrace
+            else
+
+This is equivalent to the default V8 method.
+
+                (err, stack) ->
+                    buf = []
+                    if err.name || err.message
+                        buf.push "#{err.name}: #{err.message ? ''}"
+                    for s in stack
+                        try
+                            line = "    at #{s.toString()}"
+                        catch e
+                            try
+                                line = "<error: " + e + ">"
+                            catch e
+                                line = "<error>"
+                        buf.push line
+                    buf.join("\n") + "\n"
 
             getSourceMap = (filename) ->
                 if filename of sourceMapCache
@@ -257,15 +255,41 @@ sourceMap, so we must monkey-patch Error to display source positions.
                 return sourceMap
 
             getSourceMapping = (filename, line, column) ->
-                    sourceMap = getSourceMap filename
-                    sourceMap.sourceLocation [line - 1, column - 1] if sourceMap
+                sourceMap = getSourceMap filename
+                sourceMap.sourceLocation [line - 1, column - 1] if sourceMap
+
+Process a stack frame, modifying its filename and line/col number if we have
+source map data. This updates the object in-place.
+
+            mungeStackFrame = (frame) ->
+                return if frame.isNative()
+                fileName = if frame.isEval()
+                    frame.getScriptNameOrSourceURL()
+                else
+                    frame.getFileName()
+                fileName ||= "<anonymous>"
+                line = frame.getLineNumber()
+                column = frame.getColumnNumber()
+
+                source = getSourceMapping fileName, line, column
+
+                if source
+                    [fileName, line, column] = source
+                    line += 1
+                    column += 1
+
+                    Object.defineProperties frame, {
+                        getFileName: { value: -> fileName }
+                        getLineNumber: { value: -> line }
+                        getColumnNumber: { value: -> column }
+                    }
 
             Error.prepareStackTrace = (err, stack) ->
-                    frames = for frame in stack
-                            break if frame.getFunction() is exports.run
-                            "  at #{formatSourcePosition frame, getSourceMapping}"
+                for frame in stack
+                    break if frame.getFunction() is exports.run
+                    mungeStackFrame frame
 
-                    "#{err.name}: #{err.message ? ''}\n#{frames.join '\n'}\n"
+                prepareStackTrace err, stack
 
 Our API for source maps is just the `SourceMap` class.
 
